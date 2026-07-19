@@ -1,0 +1,23 @@
+# .NET build output
+[Bb]in/
+[Oo]bj/
+.dotnet/
+artifacts/
+
+# Visual Studio and user-specific files
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Generated installer payload. Recreated by scripts/Build-Release.ps1.
+DrawMachineInstaller/Payload/DrawMachine.exe
+
+# Local classroom data. The anonymized example is kept in examples/ instead.
+学生名单四组数据test.txt
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
