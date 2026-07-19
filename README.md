@@ -58,3 +58,7 @@ dotnet run --project .\DrawMachineDesktop\DrawMachineDesktop.csproj -c Release
 ## 许可证
 
 本项目使用 MIT License 开源。
+
+## 鸣谢
+
+感谢 OpenAI-Codex 在本项目开发过程中的协助。
