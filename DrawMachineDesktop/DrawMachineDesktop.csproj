@@ -8,9 +8,9 @@
     <AssemblyName>抽号机</AssemblyName>
     <RootNamespace>DrawMachineDesktop</RootNamespace>
     <ApplicationIcon>Assets\app-icon.ico</ApplicationIcon>
-    <Version>174.0.0</Version>
-    <FileVersion>174.0.0.0</FileVersion>
-    <InformationalVersion>v174-2026-07-19</InformationalVersion>
+    <Version>175.0.0</Version>
+    <FileVersion>175.0.0.0</FileVersion>
+    <InformationalVersion>v175-2026-08-25</InformationalVersion>
   </PropertyGroup>
   <ItemGroup>
     <Content Include="Assets\app-icon.ico" />

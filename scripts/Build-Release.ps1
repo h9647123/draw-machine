@@ -51,7 +51,8 @@ dotnet publish $installerProject -c $Configuration -r $Runtime --self-contained 
 if (-not $SkipInnoSetup) {
     $innoSetup = @(
         (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source,
-        'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+        'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
+        "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
     ) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
 
     if ($innoSetup) {

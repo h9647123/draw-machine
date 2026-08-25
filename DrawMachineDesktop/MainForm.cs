@@ -1,6 +1,7 @@
 using System.Drawing.Drawing2D;
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -34,8 +35,17 @@ internal sealed class MainForm : Form
     private const int StartupRevealWarmupPasses = 8;
     private const int StartupRevealMaxWaitMs = 1400;
     private const int MainCountdownMinimumHeight = 104;
-    private const string AppVersion = "v174";
-    private const string AppBuildDate = "2026-07-19";
+    private const string AppVersion = "v175";
+    private const string AppBuildDate = "2026-08-25";
+    private const string UpdateRepository = "h9647123/draw-machine";
+    private const string UpdateApiPath = "https://api.github.com/repos/h9647123/draw-machine/releases/latest";
+    private static readonly string[] UpdateApiSources =
+    {
+        UpdateApiPath,
+        $"https://ghfast.top/{UpdateApiPath}",
+        $"https://gh-proxy.com/{UpdateApiPath}",
+        $"https://ghproxy.net/{UpdateApiPath}"
+    };
     private const string CoreDrawActionText = "开始抽号";
     private const string DemoDrawActionText = "试用抽号";
     private const string DrawingActionText = "抽号中...";
@@ -4396,7 +4406,7 @@ internal sealed class MainForm : Form
         var page = CreateSettingsTabPage("帮助");
         var content = CreateSettingsFlow();
         page.Controls.Add(content);
-        content.Controls.Add(CreateSettingsRow("帮助", CreateSettingsButton("操作速查", ShowQuickGuide), CreateSettingsButton("关于", ShowAbout)));
+        content.Controls.Add(CreateSettingsRow("帮助", CreateSettingsButton("操作速查", ShowQuickGuide), CreateSettingsButton("检查更新", CheckForUpdates), CreateSettingsButton("关于", ShowAbout)));
         return page;
     }
 
@@ -4702,6 +4712,7 @@ internal sealed class MainForm : Form
 
         var helpGroup = AddGroup("帮助");
         AddItem(helpGroup.DropDownItems, "操作速查", ShowQuickGuide);
+        AddItem(helpGroup.DropDownItems, "检查更新", CheckForUpdates);
         AddItem(helpGroup.DropDownItems, "关于", ShowAbout);
 
         _mainMoreMenu.Items.Remove(drawGroup);
@@ -9622,6 +9633,146 @@ internal sealed class MainForm : Form
 
         return string.Join(Environment.NewLine, lines);
     }
+    private async void CheckForUpdates()
+    {
+        try
+        {
+            UseWaitCursor = true;
+            var release = await FetchLatestReleaseAsync();
+            if (release is null)
+            {
+                MessageBox.Show(this, "暂时无法连接 GitHub 或更新镜像，请稍后重试。", "检查更新", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (!IsNewerVersion(release.TagName, AppVersion))
+            {
+                MessageBox.Show(this, $"当前已经是最新版本：{AppVersion}。", "检查更新", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            ShowUpdateDialog(release);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"检查更新失败：{ex.Message}", "检查更新", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally
+        {
+            UseWaitCursor = false;
+        }
+    }
+
+    private static async Task<GitHubReleaseInfo?> FetchLatestReleaseAsync()
+    {
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("DrawMachineDesktop-UpdateChecker/1.0");
+        foreach (var source in UpdateApiSources)
+        {
+            try
+            {
+                using var response = await client.GetAsync(source);
+                response.EnsureSuccessStatusCode();
+                using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                var root = document.RootElement;
+                var tagName = root.GetProperty("tag_name").GetString() ?? string.Empty;
+                var releaseUrl = root.TryGetProperty("html_url", out var releaseUrlElement)
+                    ? releaseUrlElement.GetString() ?? $"https://github.com/{UpdateRepository}/releases/latest"
+                    : $"https://github.com/{UpdateRepository}/releases/latest";
+                var assetUrl = FindInstallerAssetUrl(root) ?? releaseUrl;
+                if (!string.IsNullOrWhiteSpace(tagName))
+                {
+                    return new GitHubReleaseInfo(tagName, releaseUrl, assetUrl);
+                }
+            }
+            catch (HttpRequestException)
+            {
+            }
+            catch (TaskCanceledException)
+            {
+            }
+            catch (JsonException)
+            {
+            }
+        }
+
+        return null;
+    }
+
+    private static string? FindInstallerAssetUrl(JsonElement release)
+    {
+        if (!release.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var installer = assets.EnumerateArray()
+            .FirstOrDefault(asset =>
+                asset.TryGetProperty("name", out var name)
+                && name.GetString()?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true
+                && name.GetString()?.Contains("installer", StringComparison.OrdinalIgnoreCase) == true);
+        if (installer.ValueKind == JsonValueKind.Object
+            && installer.TryGetProperty("browser_download_url", out var installerUrl))
+        {
+            return installerUrl.GetString();
+        }
+
+        var executable = assets.EnumerateArray()
+            .FirstOrDefault(asset =>
+                asset.TryGetProperty("name", out var name)
+                && name.GetString()?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true);
+        return executable.ValueKind == JsonValueKind.Object
+            && executable.TryGetProperty("browser_download_url", out var executableUrl)
+            ? executableUrl.GetString()
+            : null;
+    }
+
+    private static bool IsNewerVersion(string latestTag, string currentTag)
+    {
+        return Version.TryParse(latestTag.TrimStart('v', 'V'), out var latest)
+            && Version.TryParse(currentTag.TrimStart('v', 'V'), out var current)
+            && latest > current;
+    }
+
+    private void ShowUpdateDialog(GitHubReleaseInfo release)
+    {
+        using var dialog = new Form
+        {
+            Text = "发现新版本",
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false,
+            ShowInTaskbar = false,
+            ClientSize = new Size(560, 250),
+            Font = SystemFonts.MessageBoxFont
+        };
+        var message = new Label
+        {
+            Text = $"发现新版本 {release.TagName}\n当前版本：{AppVersion}\n\n请选择下载源。下载后运行安装程序即可覆盖更新。",
+            AutoSize = false,
+            Location = new Point(24, 24),
+            Size = new Size(500, 90)
+        };
+        var directButton = new Button { Text = "GitHub 直连", Location = new Point(24, 136), Size = new Size(118, 34) };
+        var fastButton = new Button { Text = "ghfast 镜像", Location = new Point(152, 136), Size = new Size(118, 34) };
+        var proxyButton = new Button { Text = "gh-proxy 镜像", Location = new Point(280, 136), Size = new Size(128, 34) };
+        var closeButton = new Button { Text = "稍后处理", DialogResult = DialogResult.Cancel, Location = new Point(426, 136), Size = new Size(108, 34) };
+        directButton.Click += (_, _) => OpenUpdateUrl(release.AssetUrl);
+        fastButton.Click += (_, _) => OpenUpdateUrl($"https://ghfast.top/{release.AssetUrl}");
+        proxyButton.Click += (_, _) => OpenUpdateUrl($"https://gh-proxy.com/{release.AssetUrl}");
+        dialog.Controls.AddRange(new Control[] { message, directButton, fastButton, proxyButton, closeButton });
+        dialog.CancelButton = closeButton;
+        dialog.ShowDialog(this);
+    }
+
+    private static void OpenUpdateUrl(string url)
+    {
+        Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
+    }
+
+    private sealed record GitHubReleaseInfo(string TagName, string ReleaseUrl, string AssetUrl);
+
     private void ShowAbout()
     {
         MessageBox.Show(

@@ -320,7 +320,7 @@ internal static class Program
         var launchBox = new CheckBox
         {
             Text = "安装完成后打开抽号机",
-            Checked = true,
+            Checked = false,
             Location = new Point(300, 66),
             Size = new Size(230, 24)
         };

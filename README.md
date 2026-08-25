@@ -9,6 +9,7 @@
 - 导出名单、历史记录、课堂总结和课堂包。
 - 使用托盘图标与悬浮球快速打开常用操作。
 - 单实例运行，支持登录后静默启动到托盘。
+- 帮助页面可检查 GitHub 最新版本，并提供 GitHub 直连与多个镜像下载源。
 
 ## 运行环境
 
@@ -38,6 +39,8 @@ dotnet run --project .\DrawMachineDesktop\DrawMachineDesktop.csproj -c Release
 - `setup\抽号机安装器.exe`：Inno Setup 安装程序（本机安装 Inno Setup 时生成）
 
 构建时生成的 `DrawMachineInstaller\Payload\DrawMachine.exe` 和所有发布输出均被 Git 忽略，不会进入源码仓库。
+
+安装器使用 Inno Setup 生成标准 Windows 安装界面。安装完成后启动选项默认关闭，只有主动勾选后才会打开抽号机。
 
 ## 名单格式
 

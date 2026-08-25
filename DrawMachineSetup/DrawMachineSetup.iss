@@ -1,12 +1,12 @@
 #define AppName "抽号机"
-#define AppVersion "174.0.0"
-#define AppVersionText "v174-2026-07-19"
+#define AppVersion "175.0.0"
+#define AppVersionText "v175-2026-08-25"
 #define AppPublisher "h9647123"
 #ifndef SourceExe
-  #define SourceExe "..\DrawMachineDesktop\bin\Release\publish-v174-single-exe\抽号机.exe"
+  #define SourceExe "..\DrawMachineDesktop\bin\Release\publish-v175-single-exe\抽号机.exe"
 #endif
 #ifndef OutputDir
-  #define OutputDir "..\DrawMachineDesktop\bin\Release\installer-v174-windows"
+  #define OutputDir "..\DrawMachineDesktop\bin\Release\installer-v175-windows"
 #endif
 
 [Setup]
@@ -56,7 +56,7 @@ Name: "{userprograms}\{#AppName}\{#AppName}"; Filename: "{app}\抽号机.exe"; W
 Name: "{userprograms}\{#AppName}\卸载{#AppName}"; Filename: "{uninstallexe}"; Tasks: startmenuicon
 
 [Run]
-Filename: "{app}\抽号机.exe"; Description: "安装完成后打开抽号机"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\抽号机.exe"; Description: "安装完成后打开抽号机"; Flags: nowait postinstall skipifsilent unchecked
 
 [UninstallDelete]
 Type: dirifempty; Name: "{userprograms}\{#AppName}"
