@@ -1,12 +1,12 @@
 #define AppName "抽号机"
-#define AppVersion "175.0.0"
-#define AppVersionText "v175-2026-08-25"
+#define AppVersion "176.0.0"
+#define AppVersionText "v176-2026-09-12"
 #define AppPublisher "h9647123"
 #ifndef SourceExe
-  #define SourceExe "..\DrawMachineDesktop\bin\Release\publish-v175-single-exe\抽号机.exe"
+  #define SourceExe "..\DrawMachineDesktop\bin\Release\publish-v176-single-exe\抽号机.exe"
 #endif
 #ifndef OutputDir
-  #define OutputDir "..\DrawMachineDesktop\bin\Release\installer-v175-windows"
+  #define OutputDir "..\DrawMachineDesktop\bin\Release\installer-v176-windows"
 #endif
 
 [Setup]

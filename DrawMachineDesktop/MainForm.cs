@@ -26,7 +26,10 @@ internal sealed class MainForm : Form
     private const int FloatingStatusMaxHeight = 132;
     private const int FloatingIconSize = 46;
     private const int FloatingLogoSize = 58;
-    private const float FloatingScaleMax = 1.38f;
+    private const int FloatingSizeMinimum = 70;
+    private const int FloatingSizeMaximum = 160;
+    private const int FloatingEdgeStripWidth = 18;
+    private const int FloatingEdgeStripHeight = 86;
     private const int NormalCardMinimumWidth = 720;
     private const int NormalCardMinimumHeight = 760;
     private const int NormalHostPadding = 24;
@@ -35,8 +38,8 @@ internal sealed class MainForm : Form
     private const int StartupRevealWarmupPasses = 8;
     private const int StartupRevealMaxWaitMs = 1400;
     private const int MainCountdownMinimumHeight = 104;
-    private const string AppVersion = "v175";
-    private const string AppBuildDate = "2026-08-25";
+    private const string AppVersion = "v176";
+    private const string AppBuildDate = "2026-09-12";
     private const string UpdateRepository = "h9647123/draw-machine";
     private const string UpdateApiPath = "https://api.github.com/repos/h9647123/draw-machine/releases/latest";
     private static readonly string[] UpdateApiSources =
@@ -296,6 +299,8 @@ internal sealed class MainForm : Form
     private float _floatingStatusHeight = FloatingStatusMinHeight;
     private float _floatingTargetStatusHeight = FloatingStatusMinHeight;
     private bool _floatingExpandLeft;
+    private bool _floatingEdgeCollapsed;
+    private bool _floatingEdgeOnLeft;
     private string _currentDrawReplayMode = "student";
     private bool _isPresentationMode;
     private Rectangle _presentationBounds;
@@ -1808,8 +1813,8 @@ internal sealed class MainForm : Form
             && AreStartupCriticalControlsReady()
             && _normalHost.ClientSize.Width > 0
             && _normalHost.ClientSize.Height > 0
-            && _cardPanel.Width >= NormalCardMinimumWidth
-            && _cardPanel.Height >= NormalCardMinimumHeight
+            && _cardPanel.Width >= ScaleForDpi(NormalCardMinimumWidth)
+            && _cardPanel.Height >= ScaleForDpi(NormalCardMinimumHeight)
             && _resultPanel.ClientSize.Width > 0
             && _resultPanel.ClientSize.Height > 0
             && _countdownValue.ClientSize.Width > 0
@@ -2485,9 +2490,9 @@ internal sealed class MainForm : Form
         _normalHost.Padding = new Padding(0);
         _normalHost.BackColor = Color.Transparent;
 
-        _cardPanel.Location = new Point(NormalHostPadding, NormalHostPadding);
-        _cardPanel.MinimumSize = new Size(NormalCardMinimumWidth, NormalCardMinimumHeight);
-        _cardPanel.Padding = new Padding(32);
+        _cardPanel.Location = new Point(ScaleForDpi(NormalHostPadding), ScaleForDpi(NormalHostPadding));
+        _cardPanel.MinimumSize = new Size(ScaleForDpi(NormalCardMinimumWidth), ScaleForDpi(NormalCardMinimumHeight));
+        _cardPanel.Padding = new Padding(ScaleForDpi(32));
         _cardPanel.BackColor = Color.FromArgb(245, 250, 255);
         _cardPanel.Paint += (_, e) =>
         {
@@ -2522,9 +2527,9 @@ internal sealed class MainForm : Form
         layout.Controls.Add(BuildStatusRow(), 0, 1);
 
         _resultPanel.Dock = DockStyle.Fill;
-        _resultPanel.Margin = new Padding(0, 22, 0, 0);
-        _resultPanel.Padding = new Padding(22);
-        _resultPanel.MinimumSize = new Size(0, 200);
+        _resultPanel.Margin = new Padding(0, ScaleForDpi(22), 0, 0);
+        _resultPanel.Padding = new Padding(ScaleForDpi(22));
+        _resultPanel.MinimumSize = new Size(0, ScaleForDpi(200));
         _resultPanel.BackColor = Color.FromArgb(233, 243, 255);
         _resultPanel.Resize += (_, _) => RefreshResultFonts();
         _resultPanel.Paint += (_, e) =>
@@ -2589,21 +2594,20 @@ internal sealed class MainForm : Form
 
     private Control BuildHeaderRow()
     {
-        var header = new TableLayoutPanel
+        var header = new FlowLayoutPanel
         {
-            Dock = DockStyle.Fill,
-            ColumnCount = 2,
+            Dock = DockStyle.Top,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
             AutoSize = true,
             BackColor = Color.Transparent,
             Margin = new Padding(0)
         };
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         var titlePanel = new FlowLayoutPanel
         {
             FlowDirection = FlowDirection.TopDown,
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Top,
             WrapContents = false,
             AutoSize = true,
             BackColor = Color.Transparent,
@@ -2629,10 +2633,10 @@ internal sealed class MainForm : Form
         {
             FlowDirection = FlowDirection.LeftToRight,
             AutoSize = true,
-            WrapContents = false,
-            Anchor = AnchorStyles.Right | AnchorStyles.Top,
+            WrapContents = true,
+            Dock = DockStyle.Top,
             BackColor = Color.Transparent,
-            Margin = new Padding(0)
+            Margin = new Padding(0, 12, 0, 0)
         };
 
         ConfigureButton(_pasteListButton, "粘贴名单", false);
@@ -2655,8 +2659,8 @@ internal sealed class MainForm : Form
         _moreActionsButton.Click += (_, _) => ShowSettingsDialog();
         headerButtons.Controls.Add(_moreActionsButton);
 
-        header.Controls.Add(titlePanel, 0, 0);
-        header.Controls.Add(headerButtons, 1, 0);
+        header.Controls.Add(titlePanel);
+        header.Controls.Add(headerButtons);
         return header;
     }
 
@@ -2809,6 +2813,17 @@ internal sealed class MainForm : Form
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
             e.Graphics.CompositingQuality = CompositingQuality.HighQuality;
+            if (_floatingEdgeCollapsed)
+            {
+                var stripBounds = new Rectangle(0, 0, _floatingHost.Width - 1, _floatingHost.Height - 1);
+                using var stripBrush = new SolidBrush(GetFloatingToolbarColor());
+                using var stripPen = new Pen(GetFloatingBorderColor(), 1.4f);
+                using var stripPath = CreateRoundedRectangle(stripBounds, Math.Min(stripBounds.Width / 2, ScaleFloating(8)));
+                e.Graphics.FillPath(stripBrush, stripPath);
+                e.Graphics.DrawPath(stripPen, stripPath);
+                return;
+            }
+
             if (ShouldShowFloatingToolbar())
             {
                 var toolbarBounds = GetFloatingToolbarBounds();
@@ -2850,6 +2865,12 @@ internal sealed class MainForm : Form
         {
             if (ConsumeFloatingDragClick())
             {
+                return;
+            }
+
+            if (_floatingEdgeCollapsed)
+            {
+                RestoreFloatingFromScreenEdge();
                 return;
             }
 
@@ -3129,11 +3150,12 @@ internal sealed class MainForm : Form
             return;
         }
 
-        var width = Math.Max(NormalCardMinimumWidth, _normalHost.ClientSize.Width - NormalHostPadding * 2);
-        var height = Math.Max(NormalCardMinimumHeight, _normalHost.ClientSize.Height - NormalHostPadding * 2);
+        var padding = ScaleForDpi(NormalHostPadding);
+        var width = Math.Max(ScaleForDpi(NormalCardMinimumWidth), _normalHost.ClientSize.Width - padding * 2);
+        var height = Math.Max(ScaleForDpi(NormalCardMinimumHeight), _normalHost.ClientSize.Height - padding * 2);
 
         _cardPanel.Size = new Size(width, height);
-        _normalHost.AutoScrollMinSize = new Size(width + NormalHostPadding * 2, height + NormalHostPadding * 2);
+        _normalHost.AutoScrollMinSize = new Size(width + padding * 2, height + padding * 2);
     }
 
     private void LayoutFloatingControls()
@@ -3143,6 +3165,16 @@ internal sealed class MainForm : Form
             return;
         }
 
+        if (_floatingEdgeCollapsed)
+        {
+            _floatingTitleLabel.Text = _floatingEdgeOnLeft ? ">" : "<";
+            _floatingTitleLabel.SetBounds(0, 0, _floatingHost.Width, _floatingHost.Height);
+            SetFloatingActionVisibility(false);
+            UpdateFloatingRegion();
+            return;
+        }
+
+        _floatingTitleLabel.Text = "抽号机";
         var iconSize = ScaleFloating(FloatingIconSize);
         var logoSize = ScaleFloating(FloatingLogoSize);
         var top = ScaleFloating(7) + GetFloatingTopOffset();
@@ -3317,7 +3349,17 @@ internal sealed class MainForm : Form
             scale = Math.Max(scale, graphics.DpiX / 96f);
         }
 
-        return Math.Min(FloatingScaleMax, scale);
+        return scale * GetFloatingSizeFactor();
+    }
+
+    private int ScaleForDpi(int value)
+    {
+        return Math.Max(1, (int)Math.Round(value * Math.Max(1f, DeviceDpi / 96f)));
+    }
+
+    private float GetFloatingSizeFactor()
+    {
+        return ClampFloatingSizePercent(_state.FloatingSizePercent) / 100f;
     }
 
     private int ScaleFloating(int value)
@@ -3353,6 +3395,16 @@ internal sealed class MainForm : Form
     private int GetFloatingIconSize()
     {
         return ScaleFloating(FloatingIconSize);
+    }
+
+    private int GetFloatingEdgeStripWidth()
+    {
+        return ScaleFloating(FloatingEdgeStripWidth);
+    }
+
+    private int GetFloatingEdgeStripHeight()
+    {
+        return Math.Max(ScaleFloating(FloatingEdgeStripHeight), Math.Min(GetFloatingWindowHeight(), ScaleFloating(128)));
     }
 
     internal static GraphicsPath CreateRoundedRectangleForButton(Rectangle rect, int radius)
@@ -3553,13 +3605,14 @@ internal sealed class MainForm : Form
 
     private void ApplyFloatingFonts()
     {
-        SetControlFont(_floatingTitleLabel, 9.2f, FontStyle.Bold);
-        SetControlFont(_floatingResultLabel, _isDrawing ? 8f : 9f, FontStyle.Bold);
-        SetControlFont(_floatingCountdownLabel, 8.2f, FontStyle.Bold);
+        var sizeFactor = GetFloatingSizeFactor();
+        SetControlFont(_floatingTitleLabel, 9.2f * sizeFactor, FontStyle.Bold);
+        SetControlFont(_floatingResultLabel, (_isDrawing ? 8f : 9f) * sizeFactor, FontStyle.Bold);
+        SetControlFont(_floatingCountdownLabel, 8.2f * sizeFactor, FontStyle.Bold);
 
         foreach (var button in new[] { _floatingImportButton, _floatingMaleButton, _floatingFemaleButton, _floatingRestoreButton, _floatingExitButton })
         {
-            SetControlFont(button, 7.4f, FontStyle.Bold);
+            SetControlFont(button, 7.4f * sizeFactor, FontStyle.Bold);
         }
     }
 
@@ -3752,6 +3805,18 @@ internal sealed class MainForm : Form
 
         const int pad = 0;
         using var path = new GraphicsPath();
+        if (_floatingEdgeCollapsed)
+        {
+            using var stripPath = CreateRoundedRectangle(
+                new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1)),
+                Math.Max(1, Math.Min(Width, Height) / 2));
+            path.AddPath(stripPath, false);
+            var oldStripRegion = Region;
+            Region = new Region(path);
+            oldStripRegion?.Dispose();
+            return;
+        }
+
         path.AddEllipse(new Rectangle(
             GetFloatingLogoX() - pad,
             ScaleFloating(5) + GetFloatingTopOffset(),
@@ -3854,16 +3919,116 @@ internal sealed class MainForm : Form
 
     private void FloatingDrag_MouseUp(object? sender, MouseEventArgs e)
     {
+        var wasDragging = _floatingDragActive;
         _floatingDragActive = false;
         Location = ClampFloatingLocation(Location);
+        if (!wasDragging || !_floatingDragMoved)
+        {
+            return;
+        }
+
+        if (_floatingEdgeCollapsed)
+        {
+            var workingArea = Screen.FromRectangle(Bounds).WorkingArea;
+            _floatingEdgeOnLeft = Left + Width / 2 < workingArea.Left + workingArea.Width / 2;
+            ApplyFloatingEdgeStripBounds();
+        }
+        else
+        {
+            CollapseFloatingAtScreenEdgeIfNeeded();
+        }
+    }
+
+    private void CollapseFloatingAtScreenEdgeIfNeeded()
+    {
+        var workingArea = Screen.FromRectangle(Bounds).WorkingArea;
+        var edgeThreshold = ScaleFloating(10);
+        var onLeft = Left <= workingArea.Left + edgeThreshold;
+        var onRight = Right >= workingArea.Right - edgeThreshold;
+        if (!onLeft && !onRight)
+        {
+            return;
+        }
+
+        CollapseFloatingToScreenEdge(onLeft);
+    }
+
+    private void CollapseFloatingToScreenEdge(bool onLeft)
+    {
+        if (!_isFloatingMode)
+        {
+            return;
+        }
+
+        _floatingAnimationTimer.Stop();
+        _floatingStatusAnimationTimer.Stop();
+        _floatingGenderAnimationTimer.Stop();
+        _floatingAnimationActive = false;
+        _floatingGenderAnimationActive = false;
+        _floatingGenderMenuVisible = false;
+        _floatingGenderMenuTargetVisible = false;
+        _floatingGenderProgress = 0f;
+        _floatingIsExpanded = false;
+        _floatingToolbarProgress = 0f;
+        _floatingToolbarTargetProgress = 0f;
+        _floatingEdgeCollapsed = true;
+        _floatingEdgeOnLeft = onLeft;
+        SetFloatingActionVisibility(false);
+        ApplyFloatingEdgeStripBounds();
+        LayoutFloatingControls();
+        UpdateFloatingRegion();
+        _floatingHost.Invalidate();
+    }
+
+    private void RestoreFloatingFromScreenEdge()
+    {
+        if (!_isFloatingMode || !_floatingEdgeCollapsed)
+        {
+            return;
+        }
+
+        var workingArea = Screen.FromRectangle(Bounds).WorkingArea;
+        var onLeft = _floatingEdgeOnLeft;
+        _floatingEdgeCollapsed = false;
+        _floatingExpandLeft = !onLeft;
+        var height = GetFloatingWindowHeight();
+        var width = GetFloatingDockWidth();
+        var location = new Point(
+            onLeft ? workingArea.Left : workingArea.Right - width,
+            Math.Max(workingArea.Top, Math.Min(workingArea.Bottom - height, Top)));
+        MinimumSize = new Size(width, height);
+        MaximumSize = new Size(width, height);
+        Bounds = new Rectangle(location, new Size(width, height));
+        LayoutFloatingControls();
+        UpdateFloatingRegion();
+        ExpandFloatingDock();
+    }
+
+    private void ApplyFloatingEdgeStripBounds()
+    {
+        if (!_isFloatingMode || !_floatingEdgeCollapsed)
+        {
+            return;
+        }
+
+        var workingArea = Screen.FromRectangle(Bounds).WorkingArea;
+        var width = GetFloatingEdgeStripWidth();
+        var height = GetFloatingEdgeStripHeight();
+        var location = new Point(
+            _floatingEdgeOnLeft ? workingArea.Left : workingArea.Right - width,
+            Math.Max(workingArea.Top, Math.Min(workingArea.Bottom - height, Top)));
+        MinimumSize = new Size(width, height);
+        MaximumSize = new Size(width, height);
+        Bounds = new Rectangle(location, new Size(width, height));
     }
 
     private Point ClampFloatingLocation(Point location)
     {
-        var workingArea = Screen.FromPoint(Cursor.Position).WorkingArea;
-        var height = GetFloatingWindowHeight();
+        var width = _floatingEdgeCollapsed ? GetFloatingEdgeStripWidth() : GetFloatingDockWidth();
+        var height = _floatingEdgeCollapsed ? GetFloatingEdgeStripHeight() : GetFloatingWindowHeight();
+        var workingArea = Screen.FromPoint(new Point(location.X + width / 2, location.Y + height / 2)).WorkingArea;
         return new Point(
-            Math.Max(workingArea.Left, Math.Min(workingArea.Right - GetFloatingDockWidth(), location.X)),
+            Math.Max(workingArea.Left, Math.Min(workingArea.Right - width, location.X)),
             Math.Max(workingArea.Top, Math.Min(workingArea.Bottom - height, location.Y)));
     }
 
@@ -3884,12 +4049,18 @@ internal sealed class MainForm : Form
             return;
         }
 
-        var height = GetFloatingWindowHeight();
-        MinimumSize = new Size(GetFloatingDockWidth(), height);
-        MaximumSize = new Size(GetFloatingDockWidth(), height);
-        if (Height != height)
+        if (_floatingEdgeCollapsed)
         {
-            Bounds = new Rectangle(Location.X, Location.Y, GetFloatingDockWidth(), height);
+            ApplyFloatingEdgeStripBounds();
+            return;
+        }
+
+        var size = new Size(GetFloatingDockWidth(), GetFloatingWindowHeight());
+        MinimumSize = size;
+        MaximumSize = size;
+        if (Size != size)
+        {
+            Bounds = new Rectangle(Location, size);
             Location = ClampFloatingLocation(Location);
         }
     }
@@ -4305,6 +4476,31 @@ internal sealed class MainForm : Form
             shadeValue.Text = $"{shadeInput.Value}%";
         };
         content.Controls.Add(CreateSettingsRow("悬浮球深浅", shadeInput, shadeValue));
+
+        var sizeValue = new Label
+        {
+            AutoSize = true,
+            Text = $"{ClampFloatingSizePercent(_state.FloatingSizePercent)}%",
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Microsoft YaHei UI", 11, FontStyle.Bold),
+            ForeColor = Color.FromArgb(17, 38, 61),
+            Margin = new Padding(8, 9, 0, 0)
+        };
+        var sizeInput = new TrackBar
+        {
+            Minimum = FloatingSizeMinimum,
+            Maximum = FloatingSizeMaximum,
+            TickFrequency = 10,
+            Value = ClampFloatingSizePercent(_state.FloatingSizePercent),
+            Width = 180,
+            Height = 42
+        };
+        sizeInput.ValueChanged += (_, _) =>
+        {
+            ApplySettingsFloatingSize(sizeInput.Value);
+            sizeValue.Text = $"{sizeInput.Value}%";
+        };
+        content.Controls.Add(CreateSettingsRow("悬浮球大小", sizeInput, sizeValue));
         content.Controls.Add(CreateSettingsRow(
             "窗口",
             CreateSettingsButton("悬浮球模式", EnterFloatingMode),
@@ -4361,6 +4557,16 @@ internal sealed class MainForm : Form
         var content = CreateSettingsFlow();
         page.Controls.Add(content);
         var canUseRoster = GetStudents().Count > 0 && !_isDrawing;
+        var includeGroupColumnBox = CreateSettingsCheckBox("名单包含小组列", _state.IncludeGroupColumn);
+        includeGroupColumnBox.CheckedChanged += (_, _) =>
+        {
+            if (_state.IncludeGroupColumn != includeGroupColumnBox.Checked)
+            {
+                _state.IncludeGroupColumn = includeGroupColumnBox.Checked;
+                _state.Save();
+            }
+        };
+        content.Controls.Add(CreateSettingsRow("名单列", includeGroupColumnBox));
         content.Controls.Add(CreateSettingsRow(
             "准备名单",
             CreateSettingsButton("上课向导", ShowStartGuide, !_isDrawing),
@@ -4509,6 +4715,36 @@ internal sealed class MainForm : Form
         {
             SaveFloatingShade();
         }
+    }
+
+    private void ApplySettingsFloatingSize(int sizePercent)
+    {
+        var clamped = ClampFloatingSizePercent(sizePercent);
+        if (_state.FloatingSizePercent == clamped)
+        {
+            return;
+        }
+
+        _state.FloatingSizePercent = clamped;
+        _state.Save();
+        if (!_isFloatingMode)
+        {
+            return;
+        }
+
+        ApplyFloatingFonts();
+        if (_floatingEdgeCollapsed)
+        {
+            ApplyFloatingEdgeStripBounds();
+        }
+        else
+        {
+            ApplyFloatingWindowHeight();
+        }
+
+        LayoutFloatingControls();
+        UpdateFloatingRegion();
+        _floatingHost.Invalidate();
     }
 
     private (bool Ok, string TabTexts, string DrawControlTexts) RunSettingsDialogSelfCheck()
@@ -7078,15 +7314,17 @@ internal sealed class MainForm : Form
         dialog.ShowDialog(this);
     }
 
-    private static string BuildRosterTemplateGuideText()
+    private string BuildRosterTemplateGuideText()
     {
         return string.Join(
             Environment.NewLine,
             "建议保存 Excel 模板后，把本班学生复制进去，再从“导入文件”选择这个文件。",
             string.Empty,
-            "支持列：序号、姓名、性别、小组。其中“姓名”必须有，其他列可留空。",
+            _state.IncludeGroupColumn
+                ? "支持列：序号、姓名、性别、小组。其中“姓名”必须有，其他列可留空。"
+                : "当前模板列：序号、姓名、性别。其中“姓名”必须有，其他列可留空。可在“设置 > 名单”添加小组列。",
             "性别可写：男、女、男生、女生、M、F。",
-            "小组可写：1、2、第一组、第 1 组等常见写法。",
+            _state.IncludeGroupColumn ? "小组可写：1、2、第一组、第 1 组等常见写法。" : string.Empty,
             string.Empty,
             "也支持直接粘贴：从 Excel、微信、记事本复制学生名单后，点“粘贴名单”。",
             "文件导入支持：.xlsx、.csv、.txt，也可以把文件直接拖到主界面。",
@@ -7172,23 +7410,35 @@ internal sealed class MainForm : Form
         }
     }
 
-    private static void SaveRosterTemplate(string fileName)
+    private void SaveRosterTemplate(string fileName)
     {
         SaveTableRows(fileName, BuildRosterTemplateRows(), "名单模板");
     }
 
-    private static string BuildRosterTemplateText()
+    private string BuildRosterTemplateText()
     {
         return BuildTabDelimitedText(BuildRosterTemplateRows());
     }
 
-    private static string BuildRosterTemplateCsv()
+    private string BuildRosterTemplateCsv()
     {
         return BuildCsvText(BuildRosterTemplateRows());
     }
 
-    private static string[][] BuildRosterTemplateRows()
+    private string[][] BuildRosterTemplateRows()
     {
+        if (!_state.IncludeGroupColumn)
+        {
+            return new[]
+            {
+                new[] { "序号", "姓名", "性别" },
+                new[] { "1", "张三", "男" },
+                new[] { "2", "李四", "女" },
+                new[] { "3", "王五", "男" },
+                new[] { "4", "赵六", "女" }
+            };
+        }
+
         return new[]
         {
             new[] { "序号", "姓名", "性别", "小组" },
@@ -7992,7 +8242,9 @@ internal sealed class MainForm : Form
     {
         var gender = string.IsNullOrWhiteSpace(student.Gender) ? "未填" : student.Gender.Trim();
         var group = string.IsNullOrWhiteSpace(student.Group) ? "未分组" : $"第 {student.Group.Trim()} 组";
-        return $"{student.DisplayName} · {gender} · {group} · {GetStudentLessonStatus(student)} · {GetStudentRoundStatus(student)}";
+        return _state.IncludeGroupColumn
+            ? $"{student.DisplayName} · {gender} · {group} · {GetStudentLessonStatus(student)} · {GetStudentRoundStatus(student)}"
+            : $"{student.DisplayName} · {gender} · {GetStudentLessonStatus(student)} · {GetStudentRoundStatus(student)}";
     }
 
     private string BuildCompactListSummary(IReadOnlyList<StudentRecord> students)
@@ -8012,7 +8264,9 @@ internal sealed class MainForm : Form
             ? $"男 {maleCount} 人 · 女 {femaleCount} 人 · 其他/未识别 {otherCount} 人"
             : $"男 {maleCount} 人 · 女 {femaleCount} 人";
         var groupText = groupCount > 0 ? groupCount.ToString() : "未分组";
-        var summary = $"总人数：{students.Count}\n性别：{genderText}\n小组数：{groupText}\n{BuildStudentRoundOverview(students)}";
+        var summary = _state.IncludeGroupColumn
+            ? $"总人数：{students.Count}\n性别：{genderText}\n小组数：{groupText}\n{BuildStudentRoundOverview(students)}"
+            : $"总人数：{students.Count}\n性别：{genderText}\n{BuildStudentRoundOverview(students)}";
         return excludedCount > 0
             ? $"{summary}\n本节可抽：{activeCount} 人 · 缺席 {excludedCount} 人"
             : summary;
@@ -8489,19 +8743,31 @@ internal sealed class MainForm : Form
 
     private string[][] BuildRosterExportRows(IReadOnlyList<StudentRecord> students)
     {
-        return new[] { new[] { "序号", "姓名", "性别", "小组", "本节状态", "本轮状态" } }
+        var header = _state.IncludeGroupColumn
+            ? new[] { "序号", "姓名", "性别", "小组", "本节状态", "本轮状态" }
+            : new[] { "序号", "姓名", "性别", "本节状态", "本轮状态" };
+        return new[] { header }
             .Concat(students
             .OrderBy(student => ParseSequenceSortKey(student.Sequence))
             .ThenBy(student => student.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(student => new[]
-            {
-                student.Sequence.Trim(),
-                student.Name.Trim(),
-                student.Gender.Trim(),
-                student.Group.Trim(),
-                GetStudentLessonStatus(student),
-                GetStudentRoundStatus(student)
-            }))
+            .Select(student => _state.IncludeGroupColumn
+                ? new[]
+                {
+                    student.Sequence.Trim(),
+                    student.Name.Trim(),
+                    student.Gender.Trim(),
+                    student.Group.Trim(),
+                    GetStudentLessonStatus(student),
+                    GetStudentRoundStatus(student)
+                }
+                : new[]
+                {
+                    student.Sequence.Trim(),
+                    student.Name.Trim(),
+                    student.Gender.Trim(),
+                    GetStudentLessonStatus(student),
+                    GetStudentRoundStatus(student)
+                }))
             .ToArray();
     }
 
@@ -11368,6 +11634,8 @@ internal sealed class MainForm : Form
         _normalBounds = Bounds;
         _normalFormBorderStyle = FormBorderStyle;
         _normalTopMost = TopMost;
+        _floatingEdgeCollapsed = false;
+        _floatingEdgeOnLeft = false;
         _floatingGenderAnimationTimer.Stop();
         _floatingReserveGenderSpace = true;
         _floatingGenderMenuVisible = false;
@@ -11518,6 +11786,8 @@ internal sealed class MainForm : Form
 
         _isFloatingMode = false;
         _floatingDragActive = false;
+        _floatingEdgeCollapsed = false;
+        _floatingEdgeOnLeft = false;
         _floatingAnimationTimer.Stop();
         _floatingStatusAnimationTimer.Stop();
         _floatingGenderAnimationTimer.Stop();
@@ -11573,6 +11843,11 @@ internal sealed class MainForm : Form
     private static int ClampFloatingShade(int value)
     {
         return Math.Max(0, Math.Min(100, value));
+    }
+
+    private static int ClampFloatingSizePercent(int value)
+    {
+        return Math.Max(FloatingSizeMinimum, Math.Min(FloatingSizeMaximum, value));
     }
 
     private Color GetFloatingToolbarColor()

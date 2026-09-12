@@ -18,6 +18,8 @@ internal sealed class AppState
     public float ResultFontSize { get; set; } = 48f;
     public double DrawDurationSeconds { get; set; } = 5.0;
     public int FloatingShade { get; set; } = 35;
+    public int FloatingSizePercent { get; set; } = 100;
+    public bool IncludeGroupColumn { get; set; } = true;
     public bool AlwaysOnTop { get; set; }
     public bool SilentStartup { get; set; }
     public bool StartGuideShown { get; set; }
@@ -264,6 +266,7 @@ internal sealed class AppState
         state.LastDrawReplayMode ??= string.Empty;
         state.LastLessonPackageDirectory ??= string.Empty;
         state.LastExportDirectory ??= string.Empty;
+        state.FloatingSizePercent = Math.Max(70, Math.Min(160, state.FloatingSizePercent));
         return state;
     }
 }
