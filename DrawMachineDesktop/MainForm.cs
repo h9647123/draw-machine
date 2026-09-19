@@ -38,8 +38,8 @@ internal sealed class MainForm : Form
     private const int StartupRevealWarmupPasses = 8;
     private const int StartupRevealMaxWaitMs = 1400;
     private const int MainCountdownMinimumHeight = 104;
-    private const string AppVersion = "v176";
-    private const string AppBuildDate = "2026-09-12";
+    private const string AppVersion = "v177";
+    private const string AppBuildDate = "2026-09-20";
     private const string UpdateRepository = "h9647123/draw-machine";
     private const string UpdateApiPath = "https://api.github.com/repos/h9647123/draw-machine/releases/latest";
     private static readonly string[] UpdateApiSources =
@@ -9917,6 +9917,12 @@ internal sealed class MainForm : Form
                 return;
             }
 
+            if (string.IsNullOrWhiteSpace(release.AssetUrl))
+            {
+                OpenUpdateUrl(release.ReleaseUrl);
+                return;
+            }
+
             ShowUpdateDialog(release);
         }
         catch (Exception ex)
@@ -9945,10 +9951,9 @@ internal sealed class MainForm : Form
                 var releaseUrl = root.TryGetProperty("html_url", out var releaseUrlElement)
                     ? releaseUrlElement.GetString() ?? $"https://github.com/{UpdateRepository}/releases/latest"
                     : $"https://github.com/{UpdateRepository}/releases/latest";
-                var assetUrl = FindInstallerAssetUrl(root) ?? releaseUrl;
                 if (!string.IsNullOrWhiteSpace(tagName))
                 {
-                    return new GitHubReleaseInfo(tagName, releaseUrl, assetUrl);
+                    return new GitHubReleaseInfo(tagName, releaseUrl, FindInstallerAssetUrl(root));
                 }
             }
             catch (HttpRequestException)
@@ -9972,25 +9977,34 @@ internal sealed class MainForm : Form
             return null;
         }
 
-        var installer = assets.EnumerateArray()
-            .FirstOrDefault(asset =>
+        var executableAssets = assets.EnumerateArray()
+            .Where(asset =>
                 asset.TryGetProperty("name", out var name)
                 && name.GetString()?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true
-                && name.GetString()?.Contains("installer", StringComparison.OrdinalIgnoreCase) == true);
-        if (installer.ValueKind == JsonValueKind.Object
-            && installer.TryGetProperty("browser_download_url", out var installerUrl))
+                && asset.TryGetProperty("browser_download_url", out var url)
+                && Uri.TryCreate(url.GetString(), UriKind.Absolute, out var uri)
+                && string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        var preferred = executableAssets.FirstOrDefault(asset =>
         {
-            return installerUrl.GetString();
+            var name = asset.GetProperty("name").GetString() ?? string.Empty;
+            return name.Contains("windows-setup", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("setup", StringComparison.OrdinalIgnoreCase);
+        });
+        if (preferred.ValueKind == JsonValueKind.Object)
+        {
+            return preferred.GetProperty("browser_download_url").GetString();
         }
 
-        var executable = assets.EnumerateArray()
-            .FirstOrDefault(asset =>
-                asset.TryGetProperty("name", out var name)
-                && name.GetString()?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true);
-        return executable.ValueKind == JsonValueKind.Object
-            && executable.TryGetProperty("browser_download_url", out var executableUrl)
-            ? executableUrl.GetString()
-            : null;
+        var installer = executableAssets.FirstOrDefault(asset =>
+            (asset.GetProperty("name").GetString() ?? string.Empty)
+                .Contains("installer", StringComparison.OrdinalIgnoreCase));
+        return installer.ValueKind == JsonValueKind.Object
+            ? installer.GetProperty("browser_download_url").GetString()
+            : executableAssets.FirstOrDefault().ValueKind == JsonValueKind.Object
+                ? executableAssets[0].GetProperty("browser_download_url").GetString()
+                : null;
     }
 
     private static bool IsNewerVersion(string latestTag, string currentTag)
@@ -10010,7 +10024,7 @@ internal sealed class MainForm : Form
             MaximizeBox = false,
             MinimizeBox = false,
             ShowInTaskbar = false,
-            ClientSize = new Size(560, 250),
+            ClientSize = new Size(620, 250),
             Font = SystemFonts.MessageBoxFont
         };
         var message = new Label
@@ -10018,18 +10032,105 @@ internal sealed class MainForm : Form
             Text = $"发现新版本 {release.TagName}\n当前版本：{AppVersion}\n\n请选择下载源。下载后运行安装程序即可覆盖更新。",
             AutoSize = false,
             Location = new Point(24, 24),
-            Size = new Size(500, 90)
+            Size = new Size(570, 90)
         };
-        var directButton = new Button { Text = "GitHub 直连", Location = new Point(24, 136), Size = new Size(118, 34) };
-        var fastButton = new Button { Text = "ghfast 镜像", Location = new Point(152, 136), Size = new Size(118, 34) };
-        var proxyButton = new Button { Text = "gh-proxy 镜像", Location = new Point(280, 136), Size = new Size(128, 34) };
-        var closeButton = new Button { Text = "稍后处理", DialogResult = DialogResult.Cancel, Location = new Point(426, 136), Size = new Size(108, 34) };
-        directButton.Click += (_, _) => OpenUpdateUrl(release.AssetUrl);
-        fastButton.Click += (_, _) => OpenUpdateUrl($"https://ghfast.top/{release.AssetUrl}");
-        proxyButton.Click += (_, _) => OpenUpdateUrl($"https://gh-proxy.com/{release.AssetUrl}");
+        var directButton = new Button { Text = "GitHub 直连下载", Location = new Point(24, 136), Size = new Size(142, 34) };
+        var fastButton = new Button { Text = "ghproxy.net 下载", Location = new Point(176, 136), Size = new Size(142, 34) };
+        var proxyButton = new Button { Text = "gh-proxy 镜像下载", Location = new Point(328, 136), Size = new Size(150, 34) };
+        var closeButton = new Button { Text = "稍后处理", DialogResult = DialogResult.Cancel, Location = new Point(488, 136), Size = new Size(108, 34) };
+        directButton.Click += async (_, _) => await DownloadAndLaunchUpdateAsync(dialog, release, release.AssetUrl!);
+        fastButton.Click += async (_, _) => await DownloadAndLaunchUpdateAsync(dialog, release, BuildMirrorAssetUrl("https://ghproxy.net", release.AssetUrl!));
+        proxyButton.Click += async (_, _) => await DownloadAndLaunchUpdateAsync(dialog, release, BuildMirrorAssetUrl("https://gh-proxy.com", release.AssetUrl!));
         dialog.Controls.AddRange(new Control[] { message, directButton, fastButton, proxyButton, closeButton });
         dialog.CancelButton = closeButton;
         dialog.ShowDialog(this);
+    }
+
+    private async Task DownloadAndLaunchUpdateAsync(Form dialog, GitHubReleaseInfo release, string downloadUrl)
+    {
+        if (!Uri.TryCreate(downloadUrl, UriKind.Absolute, out var uri)
+            || !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            MessageBox.Show(dialog, "更新下载地址无效，请改用其他下载源。", "检查更新", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        var targetPath = Path.Combine(
+            Path.GetTempPath(),
+            $"DrawMachine-{SanitizeUpdateFileName(release.TagName)}-setup-{Guid.NewGuid():N}.exe");
+        try
+        {
+            dialog.Enabled = false;
+            dialog.UseWaitCursor = true;
+            UseWaitCursor = true;
+            await DownloadUpdateFileAsync(uri, targetPath);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = targetPath,
+                UseShellExecute = true
+            });
+            dialog.Close();
+            BeginInvoke(new MethodInvoker(Close));
+        }
+        catch (Exception ex)
+        {
+            dialog.Enabled = true;
+            MessageBox.Show(dialog, $"下载更新失败：{ex.Message}\n\n请改用其他下载源或稍后重试。", "检查更新", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            TryDeleteUpdateFile(targetPath);
+        }
+        finally
+        {
+            if (!dialog.IsDisposed)
+            {
+                dialog.UseWaitCursor = false;
+            }
+            UseWaitCursor = false;
+        }
+    }
+
+    private static async Task DownloadUpdateFileAsync(Uri uri, string targetPath)
+    {
+        using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("DrawMachineDesktop-Updater/1.0");
+        using var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead);
+        response.EnsureSuccessStatusCode();
+        await using var source = await response.Content.ReadAsStreamAsync();
+        await using var target = new FileStream(targetPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        await source.CopyToAsync(target);
+        await target.FlushAsync();
+
+        await using var validationStream = new FileStream(targetPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (validationStream.Length < 2
+            || validationStream.ReadByte() != 'M'
+            || validationStream.ReadByte() != 'Z')
+        {
+            throw new InvalidDataException("下载内容不是有效的 Windows 安装程序。");
+        }
+    }
+
+    private static string BuildMirrorAssetUrl(string mirrorBase, string assetUrl)
+    {
+        return $"{mirrorBase.TrimEnd('/')}/{assetUrl}";
+    }
+
+    private static string SanitizeUpdateFileName(string value)
+    {
+        var invalidCharacters = Path.GetInvalidFileNameChars();
+        return new string(value.Select(character => invalidCharacters.Contains(character) ? '_' : character).ToArray());
+    }
+
+    private static void TryDeleteUpdateFile(string fileName)
+    {
+        try
+        {
+            if (File.Exists(fileName))
+            {
+                File.Delete(fileName);
+            }
+        }
+        catch
+        {
+        }
     }
 
     private static void OpenUpdateUrl(string url)
@@ -10037,7 +10138,7 @@ internal sealed class MainForm : Form
         Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
     }
 
-    private sealed record GitHubReleaseInfo(string TagName, string ReleaseUrl, string AssetUrl);
+    private sealed record GitHubReleaseInfo(string TagName, string ReleaseUrl, string? AssetUrl);
 
     private void ShowAbout()
     {

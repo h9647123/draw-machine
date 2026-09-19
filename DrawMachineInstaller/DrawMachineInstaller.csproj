@@ -8,9 +8,9 @@
     <AssemblyName>抽号机安装器</AssemblyName>
     <RootNamespace>DrawMachineInstaller</RootNamespace>
     <ApplicationIcon>Assets\app-icon.ico</ApplicationIcon>
-    <Version>176.0.0</Version>
-    <FileVersion>176.0.0.0</FileVersion>
-    <InformationalVersion>v176-2026-09-12</InformationalVersion>
+    <Version>177.0.0</Version>
+    <FileVersion>177.0.0.0</FileVersion>
+    <InformationalVersion>v177-2026-09-20</InformationalVersion>
   </PropertyGroup>
   <ItemGroup>
     <Content Include="Assets\app-icon.ico" />
